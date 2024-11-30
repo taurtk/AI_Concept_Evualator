@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Concept Evaluation System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #question-container {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        #feedback-container {
+			margin-top :20px; 
+			padding :20px; 
+			border-radius :8px; 
+			background-color:#f8f9fa; 
+			display:none; /* Hide initially */
+		}
+
+		.feedback-success {
+			border-left :5px solid #28a745; /* Green */
+		}
+
+		.feedback-error {
+			border-left :5px solid #dc3545; /* Red */
+		}
+
+		.feedback-title {
+			margin-top :0; 
+			color :#2c3e50; 
+			border-bottom :1px solid #e9ecef; 
+			padding-bottom :10px; 
+		}
+		
+		.feedback-section {
+			margin-top :15px; 
+		}
+		
+		.feedback-section h4 {
+			color :#333; 
+			margin-bottom :10px; 
+		}
+		
+		.feedback-item {
+			margin-bottom :10px; 
+			padding-left :15px; 
+			position :relative; 
+       }
+       
+       .feedback-item::before {
+           content:'•'; /* Custom bullet */
+           position:absolute; 
+           left:-15px; /* Position bullet */
+           color:#3498db; /* Bullet color */
+       }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>AI Concept Evaluation System</h1>
+    <div id="question-container">
+        <h2>Current Question:</h2>
+        <p id="question">Click "Generate Question" to begin</p>
+        <button id="generate-question">Generate Question</button>
+    </div>
+    <textarea id="answer" placeholder="Type your detailed answer here..." disabled></textarea>
+    <div>
+        <button id="submit-answer" disabled>Evaluate Answer</button>
+        <button id="clear-answer">Clear Answer</button>
+    </div>
+    <div id="feedback-container"></div> <!-- Updated feedback container -->
+</div>
+
+<script>
+const socket = io();
+const questionDisplay = document.getElementById('question');
+const generateQuestionBtn = document.getElementById('generate-question');
+const answerTextarea = document.getElementById('answer');
+const submitAnswerBtn = document.getElementById('submit-answer');
+const clearAnswerBtn = document.getElementById('clear-answer');
+const feedbackContainer = document.getElementById('feedback-container');
+
+const questions = [
+    "Explain the concept of transfer learning in machine learning with a practical example.",
+    "Describe the ethical considerations surrounding AI decision-making in sensitive domains like healthcare.",
+];
+
+generateQuestionBtn.addEventListener('click', () => {
+    const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
+    questionDisplay.textContent = randomQuestion;
+    answerTextarea.disabled = false; // Enable textarea for input
+    submitAnswerBtn.disabled = true; // Disable the Evaluate Answer button
+    feedbackContainer.style.display = 'none'; // Hide previous feedback
+});
+
+clearAnswerBtn.addEventListener('click', () => {
+    answerTextarea.value = '';
+});
+
+answerTextarea.addEventListener('input', () => {
+    const answer = answerTextarea.value.trim();
+    submitAnswerBtn.disabled = !answer; // Enable if there's text in textarea
+});
+
+// Submit Answer Button
+submitAnswerBtn.addEventListener('click', () => {
+    const question = questionDisplay.textContent;
+    const answer = answerTextarea.value.trim();
+    
+    if (!answer) {
+        alert('Please provide an answer before submission.');
+        return;
+    }
+
+    submitAnswerBtn.disabled = true; // Disable during evaluation
+    submitAnswerBtn.textContent = 'Evaluating...';
+    
+    socket.emit('submit_answer', { question, answer });
+});
+
+// Feedback Handling
+socket.on('feedback', (data) => {
+    submitAnswerBtn.disabled = false; // Re-enable after evaluation
+    submitAnswerBtn.textContent = 'Evaluate Answer';
+
+	if (data.status === 'error') {
+	    feedbackContainer.innerHTML = `
+	        <h3 class="feedback-title">Error</h3>
+	        <p>${data.evaluation}</p>
+	    `;
+	    feedbackContainer.className = 'feedback-container feedback-error';
+	    feedbackContainer.style.display = 'block';
+	    return; // Exit early on error.
+	}
+
+	const evaluationText = data.evaluation;
+
+	console.log("Raw Evaluation Output:", evaluationText); // Log raw output for debugging
+
+	const totalScoreMatch = evaluationText.match(/\*\*Total Score \(out of 10\): (\d+)\*\*/);
+	const strengthsMatch = evaluationText.match(/\*\*Strengths\*\*(.*?)(?=\*\*Areas for Improvement\*\*)/s);
+	const improvementsMatch = evaluationText.match(/\*\*Areas for Improvement\*\*(.*?)(?=\*\*Specific Suggestions for Enhancement\*\*)/s);
+	const suggestionsMatch = evaluationText.match(/\*\*Specific Suggestions for Enhancement\*\*(.*)/s);
+
+	const parseListItems = (match) => {
+	    if (!match || !match[1]) return '<p>No items found.</p>';
+	    const items = match[1].trim().split('\n')
+	        .filter(item => item.trim() && item.trim().startsWith('* '))
+	        .map(item => `<div class="feedback-item">${item.replace(/^\* /, '')}</div>`)
+	        .join('');
+	    return items || '<p>No items found.</p>';
+	};
+
+	const feedbackHTML = `
+	    <h3 class="feedback-title">Evaluation Result</h3>
+	    <p><strong>Total Score:</strong> ${totalScoreMatch ? totalScoreMatch[1] + '/10' : 'N/A'}</p>
+
+	    <div class="feedback-section">
+	        <h4>Strengths</h4>
+	        ${parseListItems(strengthsMatch)}
+	    </div>
+
+	    <div class="feedback-section">
+	        <h4>Areas for Improvement</h4>
+	        ${parseListItems(improvementsMatch)}
+	    </div>
+
+	    <div class="feedback-section">
+	        <h4>Specific Suggestions</h4>
+	        ${parseListItems(suggestionsMatch)}
+	    </div>
+	`;
+
+	feedbackContainer.innerHTML = feedbackHTML;
+
+	if (data.status === 'success') {
+	    feedbackContainer.className = 'feedback-container feedback-success';
+	} else {
+	    feedbackContainer.className = 'feedback-container feedback-error';
+	}
+	
+	// Show feedback container after updating its content
+	feedbackContainer.style.display = 'block';
+});
+
+socket.on('connect', () => console.log('Connected to WebSocket'));
+socket.on('disconnect', () => console.log('Disconnected from WebSocket'));
+</script>
+</body>
+</html>

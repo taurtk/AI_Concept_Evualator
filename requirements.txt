@@ -1,0 +1,4 @@
+flask_socketio
+flask
+langchain
+langchain_groq
